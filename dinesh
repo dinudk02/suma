@@ -1,0 +1,196 @@
+import React, { useState, useCallback } from 'react';
+import { Button, IconButton, Paper, Typography, Box, TextField, Autocomplete } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+
+import { Utils as QbUtils, Query, Builder } from '@react-awesome-query-builder/ui';
+import { MuiConfig } from '@react-awesome-query-builder/mui';
+import '@react-awesome-query-builder/mui/css/styles.css';
+// import './DemoQueryBuilderWithMUI.css';
+
+import { queryFields } from './fields.js';
+
+const InitialConfig = MuiConfig;
+
+// Custom MUI button components for the query builder
+const MuiButton = ({ type, onClick, label, readonly, config }) => {
+  const isDelRule = type === "delRule";
+  const isDelGroup = type === "delGroup";
+  if (readonly) return null;
+  if (isDelRule || isDelGroup) {
+    return (
+      <IconButton
+        size="small"
+        onClick={onClick}
+        color="error"
+        sx={{ ml: 1 }}
+      >
+        <DeleteIcon fontSize="small" />
+      </IconButton>
+    );
+  }
+  return (
+    <Button
+      variant="outlined"
+      size="small"
+      startIcon={<AddIcon />}
+      onClick={onClick}
+      sx={{ 
+        mr: 1, 
+        mb: 1,
+        textTransform: 'none',
+        fontSize: '12px',
+        minWidth: 'auto',
+        padding: '4px 8px'
+      }}
+    >
+      {label}
+    </Button>
+  );
+};
+
+// Custom renderField for MUI Autocomplete with icons from fields
+const renderField = (props) => {
+  const { items, setField, selectedKey } = props;
+  
+  const selectedItem = items.find(item => item.key === selectedKey);
+  
+  return (
+    <Autocomplete
+      size="small"
+      options={items}
+      getOptionLabel={(option) => option.label}
+      value={selectedItem || null}
+      onChange={(event, newValue) => {
+        setField(newValue ? newValue.key : '');
+      }}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          placeholder="Select field"
+          sx={{ minWidth: 140 }}
+        />
+      )}
+      renderOption={(props, option) => {
+        const IconComponent = option.icon || null;
+        return (
+          <Box component="li" {...props}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {IconComponent && <IconComponent sx={{ fontSize: 16 }} />}
+              {option.label}
+            </Box>
+          </Box>
+        );
+      }}
+      renderTags={(value, getTagProps) => {
+        if (!value) return null;
+        const IconComponent = value.icon || null;
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {IconComponent && <IconComponent sx={{ fontSize: 16 }} />}
+            {value.label}
+          </Box>
+        );
+      }}
+      isOptionEqualToValue={(option, value) => option.key === value.key}
+    />
+  );
+};
+
+const config = {
+  ...InitialConfig,
+  settings: {
+    ...InitialConfig.settings,
+    renderButton: MuiButton,
+    renderField,
+    addRuleLabel: "Add Condition",
+    addGroupLabel: "Add Group",
+    delGroupLabel: null,
+    delRuleLabel: null,
+    position: 'bottom',
+    showAddGroup: true,
+    showAddRule: true,
+    renderDrag: () => (
+      <DragIndicatorIcon sx={{ color: 'action.active', fontSize: 20, mr: 1, cursor: 'grab' }} />
+    ),
+    canAddGroup: (currentGroupPath, level) => {
+      console.log('canAddGroup', currentGroupPath, level);
+      return (level === 0 || (Array.isArray(currentGroupPath) && currentGroupPath.length === 0));
+    },
+  },
+  fields: queryFields
+};
+
+const queryValue = {"id": QbUtils.uuid(), "type": "group"};
+
+const DemoQueryBuilderWithMUI = () => {
+  const [tree, setTree] = useState(QbUtils.loadTree(queryValue));
+  const [configState, setConfigState] = useState(config);
+
+  const onChange = useCallback((immutableTree, newConfig) => {
+    setTree(immutableTree);
+    setConfigState(newConfig);
+    const jsonTree = QbUtils.getTree(immutableTree);
+    console.log(jsonTree);
+  }, []);
+
+  const renderBuilder = useCallback((props) => (
+    <Box 
+      className="query-builder-container" 
+      sx={{ 
+        padding: 2,
+        border: '1px solid #e0e0e0',
+        borderRadius: 1,
+        backgroundColor: '#fafafa',
+        position: 'relative',
+        minHeight: '200px',
+        '& .query-builder': {
+          fontFamily: 'inherit',
+        },
+        '& .group--header': {
+          marginBottom: 1,
+        },
+        '& .rule': {
+          marginBottom: 1,
+          padding: 1,
+          backgroundColor: '#fff',
+          borderRadius: 1,
+          border: '1px solid #e0e0e0',
+        },
+        '& .group--children': {
+          paddingLeft: 2,
+        }
+      }}
+    >
+      <div className="query-builder qb-lite">
+        <Builder {...props} />
+      </div>
+    </Box>
+  ), []);
+
+  return (
+    <Paper 
+      elevation={0} 
+      sx={{ 
+        p: 2, 
+        border: '1px solid #e0e0e0', 
+        borderRadius: 2, 
+        bgcolor: '#fff', 
+        mb: 2 
+      }}
+    >
+      <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+        🔍 Advanced Query Builder
+      </Typography>
+      <Query
+        {...config}
+        value={tree}
+        onChange={onChange}
+        renderBuilder={renderBuilder}
+      />
+    </Paper>
+  );
+};
+
+export default DemoQueryBuilderWithMUI;
