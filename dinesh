@@ -1,9 +1,411 @@
+css 
+
+.query-builder .group{
+  background-color: transparent;
+  border: 1px solid #e0e0e0;
+}
+
+
+.query-builder .group--actions {
+  /* Hide Add Condition at root (level 0), hide Add Group at nested levels */
+  display: flex;
+  gap: 8px;
+}
+
+/* Hide Add Condition button at root group (level 0) */
+.query-builder .group--header:first .action--addRule {
+  display: none !important;
+}
+
+/* Hide Add Group button at nested groups (level > 0) */
+.query-builder .group--header:not(:first) .action--addGroup {
+  display: none !important;
+}
+
+
+.query-builder > .group-container > .group > .group--footer .group--actions button:first-of-type {
+  display: none !important;
+}
+
+RAQ
+
+import React, { useState, useCallback } from 'react';
+import { Button, IconButton, Paper, Typography, Box, TextField, Autocomplete } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+
+import { Utils as QbUtils, Query, Builder } from '@react-awesome-query-builder/ui';
+import { MuiConfig } from '@react-awesome-query-builder/mui';
+import '@react-awesome-query-builder/mui/css/styles.css';
+import './AdvancedSearch.css'
+
+import { queryFields } from './fields.js';
+
+const InitialConfig = MuiConfig;
+
+// Custom MUI button components for the query builder
+// Only for styling, not for logic
+const MuiButton = (props) => {
+  const { type, onClick, label, readonly } = props;
+  const isDelRule = type === "delRule";
+  const isDelGroup = type === "delGroup";
+  const isAddRule = type === "addRule";
+  const isAddGroup = type === "addGroup";
+  
+  if (readonly) return null;
+  
+  if (isDelRule || isDelGroup) {
+    return (
+      <IconButton
+        size="small"
+        onClick={onClick}
+        color="secondary"
+        sx={{ ml: 1 }}
+      >
+        <DeleteIcon fontSize="small" />
+      </IconButton>
+    );
+  }
+  
+  if (isAddRule || isAddGroup) {
+    return (
+      <Button
+        variant="outlined"
+        size="small"
+        startIcon={<AddIcon />}
+        onClick={onClick}
+        sx={{ 
+          mr: 1, 
+          mb: 1,
+          textTransform: 'none',
+          fontSize: '12px',
+          minWidth: 'auto',
+          padding: '4px 8px',
+          margin: '10px'
+        }}
+      >
+        {label}
+      </Button>
+    );
+  }
+  
+  return null;
+};
+
+// Custom renderField for MUI Autocomplete with icons from fields
+const renderField = (props) => {
+  const { items, setField, selectedKey } = props;
+
+  // Transform items to include icon from queryFields
+  const transformedItems = items.map(item => {
+    const fieldConfig = queryFields[item.key];
+    return {
+      ...item,
+      icon: fieldConfig ? fieldConfig.icon : null
+    };
+  });
+
+  const selectedItem = transformedItems.find(item => item.key === selectedKey);
+
+  return (
+    <Autocomplete
+      size="small"
+      options={transformedItems}
+      getOptionLabel={(option) => option.label}
+      value={selectedItem || null}
+      onChange={(event, newValue) => {
+        setField(newValue ? newValue.key : '');
+      }}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          placeholder="Select field"
+          sx={{ minWidth: 200 }}
+        />
+      )}
+      renderOption={(props, option) => {
+        const IconComponent = option.icon || null;
+        return (
+          <Box component="li" {...props}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {IconComponent && <IconComponent sx={{ fontSize: 16 }} />}
+              {option.label}
+            </Box>
+          </Box>
+        );
+      }}
+      renderTags={(value, getTagProps) => {
+        if (!value) return null;
+        const IconComponent = value.icon || null;
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {IconComponent && <IconComponent sx={{ fontSize: 16 }} />}
+            {value.label}
+          </Box>
+        );
+      }}
+      isOptionEqualToValue={(option, value) => option.key === value.key}
+    />
+  );
+};
+
+const config = {
+  ...InitialConfig,
+  settings: {
+    ...InitialConfig.settings,
+    renderButton: MuiButton,
+    renderField,
+    addRuleLabel: "Add Condition",
+    addGroupLabel: "Add Group",
+    delGroupLabel: null,
+    delRuleLabel: null,
+    groupActionsPosition: 'bottomLeft',
+    maxNesting: 2,                     // root → group → group
+    canAddRule:  (_, level) => level > 0,
+    canAddGroup: (_, level) => level === 0,
+    showAddGroup: true,
+    showAddRule:  true,                
+    showDrag: true,
+    canRegroup: false,
+    switchMode: "button",
+    showNotToggle: true,
+    compactMode: true,
+    maxNesting: 2,
+    renderDrag: () => (
+      <DragIndicatorIcon sx={{ color: 'action.active', fontSize: 20, mr: 1, cursor: 'grab' }} />
+    ),
+  },
+  fields: queryFields
+};
+
+
+const queryValue = { "id": QbUtils.uuid(), "type": "group" };
+
+const RAQBWithMUI = () => {
+  const [tree, setTree] = useState(QbUtils.loadTree(queryValue));
+  const [configState, setConfigState] = useState(config);
+
+  const onChange = useCallback((immutableTree, newConfig) => {
+    setTree(immutableTree);
+    
+    // Get the JSON representation of the tree
+    const jsonTree = QbUtils.getTree(immutableTree);
+    
+    // Log the raw tree for debugging
+    console.log('=== RAW TREE ===');
+    console.log(JSON.stringify(jsonTree, null, 2));
+    
+    // Extract and log the conditions in a more readable format
+    const extractConditions = (node) => {
+      if (node.type === 'rule') {
+        const props = node.properties || {};
+        const fieldKey = props.field || '(no field)';
+        const field = fieldKey && queryFields[fieldKey];
+        const fieldLabel = field ? field.label : fieldKey;
+        const operator = props.operator || '(no operator)';
+        const value = props.value !== undefined ? props.value : '(no value)';
+        const valueSource = props.valueSrc !== undefined ? props.valueSrc : '(no valueSource)';
+
+        console.log('📋 CONDITION:', {
+          field: fieldLabel,
+          fieldKey,
+          operator,
+          value,
+          valueSource
+        });
+
+        return {
+          field: fieldLabel,
+          fieldKey,
+          operator,
+          value,
+          valueSource
+        };
+      } else if (node.type === 'group') {
+        const conj = node.properties?.conjunction;
+        console.log(`📦 GROUP (${conj})`);
+        const conditions = node.children1 ? node.children1.map(extractConditions) : [];
+        return {
+          type: 'group',
+          conjunction: conj,
+          conditions: conditions
+        };
+      }
+      return null;
+    };
+    
+    if (jsonTree) {
+      console.log('=== EXTRACTED CONDITIONS ===');
+      const extractedConditions = extractConditions(jsonTree);
+      console.log('Structured Conditions:', extractedConditions);
+      
+      // Log API-formatted query
+      console.log('=== API FORMAT ===');
+      const apiQuery = formatQueryForAPI(jsonTree);
+      console.log('API Query Format:', apiQuery);
+      
+      // Log a summary
+      console.log('=== SUMMARY ===');
+      console.log('Total conditions:', countConditions(jsonTree));
+      console.log('Group conjunction:', jsonTree.conj || 'N/A');
+    }
+    
+    setConfigState(newConfig);
+  }, []);
+  
+  // Helper function to count total conditions
+  const countConditions = (node) => {
+    if (node.type === 'rule') {
+      return 1;
+    } else if (node.type === 'group' && node.children1) {
+      return node.children1.reduce((count, child) => count + countConditions(child), 0);
+    }
+    return 0;
+  };
+  
+  // Helper function to format query for API calls
+  const formatQueryForAPI = (node) => {
+    if (node.type === 'rule') {
+      const props = node.properties || {};
+      const fieldKey = props.field;
+      const field = fieldKey && queryFields[fieldKey];
+      const fieldLabel = field ? field.label : fieldKey;
+
+      return {
+        field: fieldKey,
+        fieldLabel: fieldLabel,
+        operator: props.operator,
+        value: props.value,
+        valueSource: props.valueSrc
+      };
+    } else if (node.type === 'group') {
+      const conj = node.properties?.conjunction;
+      const children = node.children1 ? node.children1.map(formatQueryForAPI) : [];
+      return {
+        type: 'group',
+        conjunction: conj,
+        conditions: children
+      };
+    }
+    return null;
+  };
+
+  const renderBuilder = useCallback((props) => (
+    <Box
+      className="query-builder-container"
+      sx={{
+        padding: 2,
+        border: '1px solid #e0e0e0',
+        borderRadius: 1,
+        backgroundColor: '#fafafa',
+        position: 'relative',
+        minHeight: '200px',
+        '& .query-builder': {
+          fontFamily: 'inherit',
+        },
+        '& .group--header': {
+          marginBottom: 1,
+        },
+        '& .rule': {
+          marginBottom: 1,
+          padding: 1,
+          backgroundColor: '#fff',
+          borderRadius: 1,
+          border: '1px solid #e0e0e0',
+        },
+        '& .group--children': {
+          paddingLeft: 2,
+        }
+      }}
+    >
+      <div className="query-builder qb-lite">
+        <Builder {...props} />
+      </div>
+    </Box>
+  ), []);
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 2,
+        border: '1px solid #e0e0e0',
+        borderRadius: 2,
+        bgcolor: '#fff',
+        mb: 2
+      }}
+    >
+      <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+        🔍 Advanced Query Builder
+      </Typography>
+      <Query
+        {...configState}
+        value={tree}
+        onChange={onChange}
+        renderBuilder={renderBuilder}
+      />
+
+      
+
+      <Box sx={{ mt: 3, p: 2, bgcolor: '#f8f9fa', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+        <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#333' }}>
+          🔍 Search Actions
+        </Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={() => {
+            console.log('Search Conditions:', tree);
+            console.log('Formatted Query:', JSON.stringify(tree, null, 2));
+          }}
+          sx={{
+            mb: 2,
+            fontWeight: 'bold',
+            textTransform: 'none',
+            px: 3,
+            py: 1
+          }}
+        >
+          🔍 Execute Search
+        </Button>
+        <Box
+          component="pre"
+          sx={{
+            p: 2,
+            bgcolor: '#fff',
+            borderRadius: 1,
+            border: '1px solid #e0e0e0',
+            overflow: 'auto',
+            maxHeight: '300px',
+            fontSize: '0.875rem',
+            fontFamily: 'monospace',
+            color: '#333',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word'
+          }}
+        >
+          {JSON.stringify(tree, null, 2)}
+        </Box>
+      </Box>
+    </Paper>
+  );
+};
+
+export default RAQBWithMUI;
+
+
+filed,js
+
+
 import FolderIcon from '@mui/icons-material/Folder';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import StorageIcon from '@mui/icons-material/Storage';
 import NumbersIcon from '@mui/icons-material/Numbers';
 import GroupWorkIcon from '@mui/icons-material/GroupWork';
 import PeopleIcon from '@mui/icons-material/People';
+import GavelIcon from '@mui/icons-material/Gavel';
+import ClassIcon from '@mui/icons-material/Class';
 
 // Field configurations for the query builder with icons and custom operators, matching the screenshot
 export const queryFields = {
@@ -30,7 +432,14 @@ export const queryFields = {
     type: 'date',
     icon: CalendarTodayIcon,
     valueSources: ['value'],
+    fieldSettings: {
+      dateFormat: "DD/MM/YYYY",
+      timeFormat: "HH:mm",
+      use12Hours: false
+    },
     operators: [
+      'greater',
+      'less',
       'greater_or_equal',
       'less_or_equal',
       'equal',
@@ -63,8 +472,8 @@ export const queryFields = {
     icon: NumbersIcon,
     valueSources: ['value'],
     operators: [
-      'contains',
-      'not_contains',
+      'like',
+      'not_like',
       'starts_with',
       'ends_with',
       'equal',
@@ -73,6 +482,9 @@ export const queryFields = {
       'is_not_null',
       'is_empty',
       'is_not_empty',
+      'less',
+      'greater',
+      'regex',
     ],
   },
   name_space: {
@@ -81,8 +493,8 @@ export const queryFields = {
     icon: GroupWorkIcon,
     valueSources: ['value'],
     operators: [
-      'contains',
-      'not_contains',
+      'like',
+      'not_like',
       'starts_with',
       'ends_with',
       'equal',
@@ -109,6 +521,40 @@ export const queryFields = {
       'select_not_equals',
       'is_null',
       'is_not_null',
+    ],
+  },
+  hold: {
+    label: 'Hold',
+    type: 'boolean',
+    icon: GavelIcon,
+    valueSources: ['value'],
+    fieldSettings: {
+      labelYes: "Yes",
+      labelNo: "No"
+    },
+    operators: [
+      'equal',
+      'not_equal',
+      'is_null',
+      'is_not_null',
+    ],
+  },
+  class: {
+    label: 'Class',
+    type: 'text',
+    icon: ClassIcon,
+    valueSources: ['value'],
+    operators: [
+      'like',
+      'not_like',
+      'starts_with',
+      'ends_with',
+      'equal',
+      'not_equal',
+      'is_null',
+      'is_not_null',
+      'is_empty',
+      'is_not_empty',
     ],
   },
 };
